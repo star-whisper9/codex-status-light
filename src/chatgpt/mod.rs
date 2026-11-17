@@ -1,5 +1,5 @@
 //! 本机桌面任务状态：只读 SQLite 发现会话，再订阅内部 IPC 状态流。
-//! 协议版本变化会明确失败；不恢复会话、不代答审批，也不把历史轮次当作桌面执行证据。
+//! 按实际消息结构校验兼容性，不以协议版本号拒绝状态流。
 mod history;
 mod ipc;
 
@@ -27,10 +27,6 @@ struct Streams {
 }
 impl Streams {
     fn change(&mut self, mut message: Value) -> Result<Option<String>> {
-        ensure!(
-            message["version"].as_u64() == Some(11),
-            "不支持的桌面状态协议版本"
-        );
         let tid = message["params"]["conversationId"]
             .as_str()
             .context("状态消息缺少 conversationId")?
@@ -603,10 +599,10 @@ mod tests {
     }
 
     #[test]
-    fn revision_gap_requests_one_resync_and_bad_protocol_fails() {
+    fn revision_gap_requests_one_resync_and_times_out() {
         let mut streams = Streams::default();
         streams.subscribed.insert("t".into());
-        let mut message = json!({"version":11,"sourceClientId":"owner","params":{"conversationId":"t","change":{"type":"patches","baseRevision":2,"revision":3,"patches":[]}}});
+        let message = json!({"version":11,"sourceClientId":"owner","params":{"conversationId":"t","change":{"type":"patches","baseRevision":2,"revision":3,"patches":[]}}});
         assert_eq!(
             streams.change(message.clone()).unwrap().as_deref(),
             Some("t")
@@ -616,7 +612,29 @@ mod tests {
             .resync
             .insert("t".into(), Instant::now() - Duration::from_secs(1));
         assert!(streams.check_deadlines().is_err());
-        message["version"] = json!(12);
-        assert!(streams.change(message.clone()).is_err());
+    }
+
+    #[test]
+    fn protocol_version_is_metadata_but_state_contract_is_required() {
+        for version in [Some(json!(11)), Some(json!(13)), Some(json!(999)), None] {
+            let mut streams = Streams::default();
+            streams.subscribed.insert("t".into());
+            let mut message = json!({"sourceClientId":"owner","params":{"conversationId":"t","change":{
+                "type":"snapshot","revision":1,"conversationState":active(json!([]))
+            }}});
+            if let Some(version) = version {
+                message["version"] = version;
+            }
+            streams.change(message.clone()).unwrap();
+            assert!(streams.live["t"].task.running);
+            message["params"]["change"] = json!({"type":"patches","baseRevision":1,"revision":2,"patches":[
+                {"op":"replace","path":["threadRuntimeStatus"],"value":{"type":"idle"}}
+            ]});
+            streams.change(message.clone()).unwrap();
+            assert!(!streams.live["t"].task.running);
+            message["params"]["change"] =
+                json!({"type":"snapshot","revision":3,"conversationState":{"id":"t"}});
+            assert!(streams.change(message).is_err());
+        }
     }
 }
