@@ -1,5 +1,9 @@
 //! 将应用状态交给具体输出设备，状态层不依赖灯光参数。
 pub mod alice75;
+mod color;
+pub mod halo96;
+mod hid;
+mod via;
 
 use crate::state::Status;
 use anyhow::Result;

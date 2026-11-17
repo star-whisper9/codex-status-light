@@ -19,7 +19,7 @@ def status():
     return subprocess.run(['/bin/launchctl', 'print', TARGET], capture_output=True, text=True)
 
 
-def start():
+def start(device="alice75"):
     if not BINARY.is_file():
         raise RuntimeError(f'找不到服务二进制：{BINARY}')
     if status().returncode == 0:
@@ -28,7 +28,7 @@ def start():
     PLIST.parent.mkdir(parents=True, exist_ok=True)
     config = {
         'Label': LABEL,
-        'ProgramArguments': [str(BINARY), '--device', 'alice75', '--codex-home', str(Path.home()/'.codex')],
+        'ProgramArguments': [str(BINARY), '--device', device, '--codex-home', str(Path.home()/'.codex')],
         'WorkingDirectory': str(ROOT),
         'EnvironmentVariables': {'HOME': str(Path.home())},
         'RunAtLoad': True,
@@ -62,9 +62,11 @@ def stop():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['start', 'stop', 'status'])
-    action = parser.parse_args().command
+    parser.add_argument('--device', choices=['alice75', 'halo96'], default='alice75', help='启动时使用的设备')
+    args = parser.parse_args()
+    action = args.command
     if action == 'start':
-        start()
+        start(args.device)
     elif action == 'stop':
         stop()
     else:

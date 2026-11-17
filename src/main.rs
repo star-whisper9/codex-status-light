@@ -15,7 +15,7 @@ use std::{
 use anyhow::{Context, Result, bail, ensure};
 use codex_status_light::{
     chatgpt::Source,
-    device::{Output, alice75::Alice75},
+    device::{Output, alice75::Alice75, halo96::Halo96},
     state::{StateMachine, Status},
 };
 
@@ -36,7 +36,7 @@ fn options() -> Result<Option<Options>> {
         match arg.as_str() {
             "--help" | "-h" => {
                 println!(
-                    "codex-status-light [--device console|alice75] [--once] [--seconds N] [--codex-home PATH]\n\n默认在前台输出状态 JSON；--device alice75 才会控制键盘。\n--once 仅观察一次（console）；Ctrl-C 退出，Alice75 返回 wave 二档。\n不会安装后台服务或登录自启。"
+                    "codex-status-light [--device console|alice75|halo96] [--once] [--seconds N] [--codex-home PATH]\n\n默认在前台输出状态 JSON；--device alice75 或 halo96 才会控制键盘。\n--once 仅观察一次（console）；Ctrl-C 退出，Alice75 返回 wave 二档，Halo96 恢复接管前背光。\n不会安装后台服务或登录自启。"
                 );
                 return Ok(None);
             }
@@ -58,7 +58,7 @@ fn options() -> Result<Option<Options>> {
         }
     }
     ensure!(
-        matches!(device.as_str(), "console" | "alice75"),
+        matches!(device.as_str(), "console" | "alice75" | "halo96"),
         "不支持的设备: {device}"
     );
     ensure!(!once || device == "console", "--once 仅用于 console 观察");
@@ -91,6 +91,7 @@ fn run(options: Options) -> Result<()> {
         .context("无法注册退出信号处理器")?;
     let mut output: Box<dyn Output> = match options.device.as_str() {
         "alice75" => Box::new(Alice75::open()?),
+        "halo96" => Box::new(Halo96::open()?),
         _ => Box::new(Console),
     };
     let (tx, rx) = mpsc::channel();
